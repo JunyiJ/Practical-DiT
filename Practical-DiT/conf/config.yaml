@@ -1,8 +1,0 @@
-defaults:
-  - model: dit_tiny
-  - training: cifar10_default
-  - _self_
-
-# Global settings
-device: "auto" # Will resolve to mps, cuda, or cpu in code
-seed: 42
