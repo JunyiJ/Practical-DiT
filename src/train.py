@@ -38,9 +38,9 @@ def main(cfg: DictConfig):
 
     # 4. Training Loop
     model.train()
-    for epoch in range(cfg.train.epochs):
+    for epoch in range(cfg.training.epochs):
         epoch_loss = 0.0
-        for image, _ in dataloader:
+        for images, _ in dataloader:
             images = images.to(device)
             optimizer.zero_grad()
             loss = diffusion.compute_loss(model, images)

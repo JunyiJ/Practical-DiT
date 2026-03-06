@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 class DDPM:
     """
@@ -7,12 +8,12 @@ class DDPM:
     """
     def __init__(self, num_timesteps=1000, beta_start=0.0001, beta_end=0.02, device='cpu'):
         self.num_timesteps = num_timesteps
-        self.device = device
+        self.device = torch.device(device)
         # Define noise schedule (betas, alphas, alpha_bars)
         # You can start with a simple linear schedule.
-        self.betas = torch.linspace(beta_start, beta_end, self.num_timesteps).to(device)
-        self.alphas = 1 - betas
-        self.alpha_bars = torch.cumprod(self.alpha, dim=0)
+        self.betas = torch.linspace(beta_start, beta_end, self.num_timesteps, device=self.device)
+        self.alphas = 1 - self.betas
+        self.alpha_bars = torch.cumprod(self.alphas, dim=0)
 
 
     def add_noise(self, x_start, t, noise=None):
@@ -24,8 +25,10 @@ class DDPM:
         # x_start [B, C, H, W]
         if noise is None:
             noise = torch.randn_like(x_start)
-        sqrt_alpha_bar_t = torch.sqrt(self.alpha_bars[t])
-        sqrt_one_minus_alpha_bar_t = torch.sqrt(1.0 - self.alpha_bars[t])
+        t = t.to(device=x_start.device)
+        alpha_bars = self.alpha_bars.to(device=x_start.device, dtype=x_start.dtype)
+        sqrt_alpha_bar_t = torch.sqrt(alpha_bars[t])
+        sqrt_one_minus_alpha_bar_t = torch.sqrt(1.0 - alpha_bars[t])
         x_t = sqrt_alpha_bar_t.view(-1, 1, 1, 1) * x_start + sqrt_one_minus_alpha_bar_t.view(-1, 1, 1, 1) * noise
         return x_t
 
@@ -36,7 +39,7 @@ class DDPM:
         """
         B, C, H, W = x_start.shape
         # 1. Sample random timesteps t for the batch (unique timestamp for EACH image)
-        t = torch.randint(0, self.num_timesteps, (B, ), device=self.device)
+        t = torch.randint(0, self.num_timesteps, (B, ), device=x_start.device)
         # 2. Generate random Gaussian noise
         noise = torch.randn_like(x_start)
         # 3. Add noise to x_start to get x_t

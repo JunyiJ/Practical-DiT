@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
+
+import einops
 import math
 
 
@@ -138,18 +140,22 @@ class DiT(nn.Module):
         
         # (N, C, H, W) -> (N, hidden_size, H/P, W/P)
         x = self.x_embedder(x)
-        # (N, T=num_patches, hidden_size)
+        # (N, T=num_patches=H/P*W/P, hidden_size)
         x = x.flatten(2).transpose(1, 2)
         x = x + self.pos_embedding
         c = self.timestep_embed(t)
         for block in self.blocks:
             x = block(x, c)
+        # (N, T, p * p * in_channels)
         x = self.final_layer(x)
-        # TODO(junyi): use einops instead of manual change.
+        # use einops instead of manual change.
         p = self.patch_size
         h = self.image_size // p
-        w = self.image_size // p
-        x = x.view(x.shape[0], h, w, p, p, self.in_channels)
-        x = x.permute(0, 5, 1, 3, 2, 4).contiguous()
-        x = x.view(x.shape[0], self.in_channels, h * p, w * p)
+        x = einops.rearrange(
+            x, 'b (h w) (p1 p2 c) -> b c (h p1) (w p2)',
+            h=h, w=h, p1=p, p2=p, c=self.in_channels
+        )
+        # x = x.view(x.shape[0], h, w, p, p, self.in_channels)
+        # x = x.permute(0, 5, 1, 3, 2, 4).contiguous()
+        # x = x.view(x.shape[0], self.in_channels, h * p, w * p)
         return x
