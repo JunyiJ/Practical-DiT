@@ -8,7 +8,10 @@ venv/
 
 # Data and outputs
 src/data/
+src/data/cifar-10-batches-py/
+src/data/cifar-10-python.tar.gz
 src/outputs/
+src/__pycache__
 logs/
 checkpoints/
 
