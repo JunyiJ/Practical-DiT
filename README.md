@@ -36,3 +36,13 @@ $$L_{simple} = \mathbb{E}_{t, x_0, \epsilon} \left[ ||\epsilon - \epsilon_\theta
 * Basically you pass the image and generate a timestamp $t$ to get the noisy image $x_t$
 * The DiT model takes $x_t$ and $t$ as input to predict the noise.
 * We calculate the mean squared error (MSE) between true noise and predicted noise.
+
+
+# Cmd cheatsheet
+
+* Train model `python src/train.py`
+
+* Run sampling: e.g. (run within `src/` dir):
+```python sample.py --checkpoint ../checkpoints/model_checkpoint_20260310_144946_20260310_144946.pt \
+  --class-label 3 --num-samples 8 --output ../outputs/cond_samples.png
+```
