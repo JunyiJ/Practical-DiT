@@ -54,9 +54,17 @@ def main(cfg: DictConfig):
         print(f"Epoch {epoch+1}/{cfg.training.epochs} | Loss: {epoch_loss/len(dataloader):.4f}")
         checkpoint_every = cfg.training.get("checkpoint_every", 0)
         if checkpoint_every and (epoch + 1) % checkpoint_every == 0:
-            checkpoint_path = save_model_checkpoint(model, cfg.training.get("checkpoint_path"))
+            checkpoint_path = save_model_checkpoint(
+                model,
+                cfg.training.get("checkpoint_path"),
+                epoch=epoch + 1,
+            )
             print(f"Checkpoint saved to: {checkpoint_path}")
-    checkpoint_path = save_model_checkpoint(model, cfg.training.get("checkpoint_path"))
+    checkpoint_path = save_model_checkpoint(
+        model,
+        cfg.training.get("checkpoint_path"),
+        epoch=cfg.training.epochs,
+    )
     print(f"Checkpoint saved to: {checkpoint_path}")
 
 if __name__ == "__main__":
