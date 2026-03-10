@@ -25,21 +25,35 @@ def sample_images(
     device: torch.device,
     class_label: Optional[int] = None,
 ) -> torch.Tensor:
-    # TODO: Replace with reverse diffusion sampling.
-    # Return shape: (N, C, H, W)
+    # Reverse diffusion sampling. Return shape: (N, C, H, W)
     if class_label is not None:
         labels = torch.full((num_samples,), class_label, device=device, dtype=torch.long)
     else:
         labels = None
 
-    _ = labels  # placeholder until sampling uses labels
-    return torch.randn(
+    x_t = torch.randn(
         num_samples,
         model.in_channels,
         model.image_size,
         model.image_size,
         device=device,
     )
+
+    alphas = diffusion.alphas.to(device=device, dtype=x_t.dtype)
+    alpha_bars = diffusion.alpha_bars.to(device=device, dtype=x_t.dtype)
+    betas = diffusion.betas.to(device=device, dtype=x_t.dtype)
+
+    with torch.no_grad():
+        for i in range(diffusion.num_timesteps - 1, -1, -1):
+            t = torch.full((num_samples,), i, device=device, dtype=torch.long)
+            noise = model(x_t, t, labels)
+            alpha_t = alphas[i]
+            alpha_bar_t = alpha_bars[i]
+            beta_t = betas[i]
+            x_t = (x_t - (beta_t / torch.sqrt(1 - alpha_bar_t)) * noise) / torch.sqrt(alpha_t)
+            if i > 0:
+                x_t = x_t + torch.sqrt(beta_t) * torch.randn_like(x_t)
+    return x_t
 
 
 def save_or_print(samples: torch.Tensor, output_path: Optional[str]) -> None:
@@ -98,7 +112,9 @@ def main() -> None:
         cond_samples = sample_images(model, diffusion, args.num_samples, device, args.class_label)
         if args.output:
             output_path = Path(args.output)
-            output_path = output_path.with_name(f\"{output_path.stem}_cond{args.class_label}{output_path.suffix}\")
+            output_path = output_path.with_name(
+                f"{output_path.stem}_cond{args.class_label}{output_path.suffix}"
+            )
             save_or_print(cond_samples, str(output_path))
         else:
             save_or_print(cond_samples, None)
