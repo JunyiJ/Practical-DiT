@@ -32,7 +32,7 @@ class DDPM:
         x_t = sqrt_alpha_bar_t.view(-1, 1, 1, 1) * x_start + sqrt_one_minus_alpha_bar_t.view(-1, 1, 1, 1) * noise
         return x_t
 
-    def compute_loss(self, model, x_start):
+    def compute_loss(self, model, x_start, class_label=None):
         """
         Samples random timesteps, adds noise, and computes the MSE loss
         between the true noise and the model's predicted noise.
@@ -45,7 +45,12 @@ class DDPM:
         # 3. Add noise to x_start to get x_t
         x_t = self.add_noise(x_start, t, noise)
         # 4. Pass x_t and t to the model to predict the noise
-        pred = model(x_t, t)
+        if class_label is not None:
+            if class_label.ndim == 2 and class_label.shape[1] == 1:
+                class_label = class_label.squeeze(1)
+            if class_label.ndim != 1 or class_label.shape[0] != B:
+                raise ValueError(f"class_label must have shape (B,), got {tuple(class_label.shape)}")
+        pred = model(x_t, t, class_label)
         # 5. Return the Mean Squared Error between true and predicted noise
         loss = F.mse_loss(pred, noise)
         return loss
