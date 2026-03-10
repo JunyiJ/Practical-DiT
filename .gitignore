@@ -15,6 +15,7 @@ src/__pycache__
 logs/
 checkpoints/
 data/
+outputs/
 
 # Hydra
 .hydra/

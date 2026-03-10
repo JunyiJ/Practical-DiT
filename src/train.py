@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from model import DiT
 from diffusion import DDPM
 from data import get_cifar10_dataloader # You'll define this in data.py
+from utility import save_model_checkpoint
 
 def get_device(device_cfg):
     if device_cfg == "auto":
@@ -51,6 +52,8 @@ def main(cfg: DictConfig):
 
             epoch_loss += loss.item()
         print(f"Epoch {epoch+1}/{cfg.training.epochs} | Loss: {epoch_loss/len(dataloader):.4f}")
+    checkpoint_path = save_model_checkpoint(model, cfg.training.get("checkpoint_path"))
+    print(f"Checkpoint saved to: {checkpoint_path}")
 
 if __name__ == "__main__":
     main()
