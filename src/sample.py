@@ -66,7 +66,8 @@ def save_or_print(samples: torch.Tensor, output_path: Optional[str]) -> None:
 
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        save_image(samples, path, nrow=min(8, samples.shape[0]), normalize=True, value_range=(-1, 1))
+        # Training uses ToTensor() without normalization, so clamp to [0, 1] for visualization.
+        save_image(samples.clamp(0.0, 1.0), path, nrow=min(8, samples.shape[0]), normalize=False)
         print(f"Saved image grid to: {path}")
 
 
@@ -82,6 +83,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--class-label", type=int, default=None)
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
     parser.add_argument("--output", default=None, help="Optional output image path")
+    parser.add_argument(
+        "--training-config",
+        default="../conf/training/cifar10_default.yaml",
+        help="Path to training config YAML (used for num_timesteps)",
+    )
+    parser.add_argument(
+        "--num-timesteps",
+        type=int,
+        default=None,
+        help="Override diffusion steps at sampling; should match training",
+    )
     return parser.parse_args()
 
 
@@ -101,7 +113,13 @@ def main() -> None:
     print(f"Using device: {device}")
 
     model = load_model(args.model_config, args.checkpoint, device)
-    diffusion = DDPM(num_timesteps=1000, device=str(device))
+    if args.num_timesteps is not None:
+        num_timesteps = args.num_timesteps
+    else:
+        training_cfg = OmegaConf.load(args.training_config)
+        num_timesteps = int(training_cfg.num_timesteps)
+    diffusion = DDPM(num_timesteps=num_timesteps, device=str(device))
+    print(f"Sampling with num_timesteps={num_timesteps}")
 
     print("Sampling unconditional...")
     samples = sample_images(model, diffusion, args.num_samples, device)
