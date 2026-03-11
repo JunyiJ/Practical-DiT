@@ -39,6 +39,8 @@ def main(cfg: DictConfig):
 
     # 4. Training Loop
     model.train()
+    checkpoint_every = cfg.training.get("checkpoint_every", 0)
+    last_checkpoint_epoch = None
     for epoch in range(cfg.training.epochs):
         epoch_loss = 0.0
         for images, labels in dataloader:
@@ -52,7 +54,6 @@ def main(cfg: DictConfig):
 
             epoch_loss += loss.item()
         print(f"Epoch {epoch+1}/{cfg.training.epochs} | Loss: {epoch_loss/len(dataloader):.4f}")
-        checkpoint_every = cfg.training.get("checkpoint_every", 0)
         if checkpoint_every and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = save_model_checkpoint(
                 model,
@@ -60,12 +61,14 @@ def main(cfg: DictConfig):
                 epoch=epoch + 1,
             )
             print(f"Checkpoint saved to: {checkpoint_path}")
-    checkpoint_path = save_model_checkpoint(
-        model,
-        cfg.training.get("checkpoint_path"),
-        epoch=cfg.training.epochs,
-    )
-    print(f"Checkpoint saved to: {checkpoint_path}")
+            last_checkpoint_epoch = epoch + 1
+    if last_checkpoint_epoch != cfg.training.epochs:
+        checkpoint_path = save_model_checkpoint(
+            model,
+            cfg.training.get("checkpoint_path"),
+            epoch=cfg.training.epochs,
+        )
+        print(f"Checkpoint saved to: {checkpoint_path}")
 
 if __name__ == "__main__":
     main()

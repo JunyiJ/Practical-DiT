@@ -13,15 +13,14 @@ def save_model_checkpoint(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if not checkpoint_path:
         repo_root = Path(__file__).resolve().parents[1]
-        epoch_part = f"_epoch{epoch}" if epoch is not None else ""
-        checkpoint_path = repo_root / "checkpoints" / f"model_checkpoint{epoch_part}_{timestamp}.pt"
+        checkpoint_path = repo_root / "checkpoints" / "model_checkpoint.pt"
     path = Path(checkpoint_path)
+    epoch_part = f"_epoch{epoch}" if epoch is not None else ""
+    suffix_part = f"{epoch_part}_{timestamp}"
     if path.suffix:
-        epoch_part = f"_epoch{epoch}" if epoch is not None else ""
-        path = path.with_name(f"{path.stem}{epoch_part}_{timestamp}{path.suffix}")
+        path = path.with_name(f"{path.stem}{suffix_part}{path.suffix}")
     else:
-        epoch_part = f"_epoch{epoch}" if epoch is not None else ""
-        path = path.with_name(f"{path.name}{epoch_part}_{timestamp}")
+        path = path.with_name(f"{path.name}{suffix_part}")
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), path)
     return path
