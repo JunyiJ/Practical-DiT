@@ -25,7 +25,8 @@ def sample_images(
     device: torch.device,
     class_label: Optional[int] = None,
 ) -> torch.Tensor:
-    # Reverse diffusion sampling. Return shape: (N, C, H, W)
+    # Reverse diffusion sampling with DDPM posterior mean/variance.
+    # Return shape: (N, C, H, W)
     if class_label is not None:
         labels = torch.full((num_samples,), class_label, device=device, dtype=torch.long)
     else:
@@ -46,14 +47,30 @@ def sample_images(
     with torch.no_grad():
         for i in range(diffusion.num_timesteps - 1, -1, -1):
             t = torch.full((num_samples,), i, device=device, dtype=torch.long)
-            noise = model(x_t, t, labels)
+            eps = model(x_t, t, labels)
             alpha_t = alphas[i]
             alpha_bar_t = alpha_bars[i]
             beta_t = betas[i]
-            x_t = (x_t - (beta_t / torch.sqrt(1 - alpha_bar_t)) * noise) / torch.sqrt(alpha_t)
+
+            # Predict x0 from epsilon model and keep it in the training image range.
+            x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t) * eps) / torch.sqrt(alpha_bar_t)
+            x0_pred = x0_pred.clamp(0.0, 1.0)
+
             if i > 0:
-                x_t = x_t + torch.sqrt(beta_t) * torch.randn_like(x_t)
-    return x_t
+                alpha_bar_prev = alpha_bars[i - 1]
+            else:
+                alpha_bar_prev = torch.tensor(1.0, device=device, dtype=x_t.dtype)
+
+            coef_x0 = (torch.sqrt(alpha_bar_prev) * beta_t) / (1 - alpha_bar_t)
+            coef_xt = (torch.sqrt(alpha_t) * (1 - alpha_bar_prev)) / (1 - alpha_bar_t)
+            mean = coef_x0 * x0_pred + coef_xt * x_t
+
+            if i > 0:
+                posterior_var = beta_t * (1 - alpha_bar_prev) / (1 - alpha_bar_t)
+                x_t = mean + torch.sqrt(posterior_var) * torch.randn_like(x_t)
+            else:
+                x_t = mean
+    return x_t.clamp(0.0, 1.0)
 
 
 def save_or_print(samples: torch.Tensor, output_path: Optional[str]) -> None:
