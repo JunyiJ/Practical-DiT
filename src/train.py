@@ -32,7 +32,12 @@ def main(cfg: DictConfig):
 
     # 2. Initialize Model & Diffusion
     model = DiT(**cfg.model).to(device)
-    diffusion = DDPM(num_timesteps=cfg.training.num_timesteps)
+    diffusion = DDPM(
+        num_timesteps=cfg.training.num_timesteps,
+        beta_start=cfg.training.get("beta_start", 1.0e-4),
+        beta_end=cfg.training.get("beta_end", 2.0e-2),
+        device=str(device),
+    )
 
     # 3. Optimizer
     optimizer = optim.AdamW(model.parameters(), lr=cfg.training.lr)

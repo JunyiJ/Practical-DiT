@@ -94,6 +94,8 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override diffusion steps at sampling; should match training",
     )
+    parser.add_argument("--beta-start", type=float, default=None, help="Override beta_start at sampling")
+    parser.add_argument("--beta-end", type=float, default=None, help="Override beta_end at sampling")
     return parser.parse_args()
 
 
@@ -113,13 +115,29 @@ def main() -> None:
     print(f"Using device: {device}")
 
     model = load_model(args.model_config, args.checkpoint, device)
+    training_cfg = OmegaConf.load(args.training_config)
     if args.num_timesteps is not None:
         num_timesteps = args.num_timesteps
     else:
-        training_cfg = OmegaConf.load(args.training_config)
         num_timesteps = int(training_cfg.num_timesteps)
-    diffusion = DDPM(num_timesteps=num_timesteps, device=str(device))
-    print(f"Sampling with num_timesteps={num_timesteps}")
+    if args.beta_start is not None:
+        beta_start = args.beta_start
+    else:
+        beta_start = float(training_cfg.get("beta_start", 1.0e-4))
+    if args.beta_end is not None:
+        beta_end = args.beta_end
+    else:
+        beta_end = float(training_cfg.get("beta_end", 2.0e-2))
+    diffusion = DDPM(
+        num_timesteps=num_timesteps,
+        beta_start=beta_start,
+        beta_end=beta_end,
+        device=str(device),
+    )
+    print(
+        f"Sampling with num_timesteps={num_timesteps}, "
+        f"beta_start={beta_start}, beta_end={beta_end}"
+    )
 
     print("Sampling unconditional...")
     samples = sample_images(model, diffusion, args.num_samples, device)

@@ -14,6 +14,13 @@ class DDPM:
         self.betas = torch.linspace(beta_start, beta_end, self.num_timesteps, device=self.device)
         self.alphas = 1 - self.betas
         self.alpha_bars = torch.cumprod(self.alphas, dim=0)
+        self.alpha_bar_last = self.alpha_bars[-1].item()
+        if self.alpha_bar_last > 0.1:
+            print(
+                f"Warning: alpha_bar(T)={self.alpha_bar_last:.4f} is high. "
+                "Sampling from pure Gaussian may produce poor images. "
+                "Increase num_timesteps or beta_end."
+            )
 
 
     def add_noise(self, x_start, t, noise=None):
