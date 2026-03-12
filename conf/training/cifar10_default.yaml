@@ -1,6 +1,6 @@
 batch_size: 32
 num_workers: 0
-num_timesteps: 100
+num_timesteps: 1000
 beta_start: 1.0e-4
 beta_end: 2.0e-2
 lr: 2.0e-4
