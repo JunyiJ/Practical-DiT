@@ -4,5 +4,5 @@ num_timesteps: 100
 beta_start: 1.0e-4
 beta_end: 2.0e-2
 lr: 2.0e-4
-epochs: 200
+epochs: 150
 checkpoint_every: 50
