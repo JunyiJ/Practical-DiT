@@ -46,16 +46,13 @@ class DiTBlock(nn.Module):
     """
     A Transformer block with Adaptive Layer Normalization (adaLN).
     """
-    def __init__(self, hidden_size, num_heads, num_classes=0):
+    def __init__(self, hidden_size, num_heads):
         super().__init__()
         # TODO: Initialize standard transformer components (Attention, MLP)
         self.num_heads = num_heads
         if hidden_size % num_heads != 0:
             raise ValueError(f"hidden_size must be divisible by num_heads (got {hidden_size}, {num_heads})")
         self.head_dim = hidden_size // num_heads
-        self.num_classes = num_classes
-        if num_classes > 0:
-            self.class_embedding = nn.Embedding(num_classes, hidden_size)
         self.QKV = nn.Linear(hidden_size, 3 * hidden_size)
         self.out_proj = nn.Linear(hidden_size, hidden_size)
         self.MLP = nn.Sequential(
@@ -83,16 +80,11 @@ class DiTBlock(nn.Module):
         nn.init.zeros_(self.adaLN[-1].weight)
         nn.init.zeros_(self.adaLN[-1].bias)
 
-    def forward(self, x, t, class_label=None):
+    def forward(self, x, conditioning):
         # x: (N, T, hidden_size) - image patches
-        # t: (N, hidden_size) - timestep conditioning
-        # class_label: (N, )
+        # conditioning: (N, hidden_size) shared timestep + optional label embedding
         # The forward pass. Apply adaLN before Attention and MLP.
-        c = t
-        if self.num_classes > 0 and class_label is not None:
-            class_embedding = self.class_embedding(class_label)
-            c = c + class_embedding
-        adaLN = self.adaLN(c).unsqueeze(1)
+        adaLN = self.adaLN(conditioning).unsqueeze(1)
         gamma1, gamma2, beta1, beta2, alpha1, alpha2 = adaLN.chunk(6, dim=-1)
         N, T, _ = x.shape
         norm_x = self.ln1(x) * (1 + gamma1) + beta1
@@ -125,6 +117,8 @@ class DiT(nn.Module):
         self.hidden_size = hidden_size
         self.num_patches = (image_size // patch_size) ** 2
         self.num_classes = num_classes
+        if num_classes > 0:
+            self.class_embedding = nn.Embedding(num_classes, hidden_size)
         # 1. Patchify the image (Conv2d is a standard shortcut here)
         self.x_embedder = nn.Conv2d(
             in_channels=in_channels,
@@ -137,7 +131,7 @@ class DiT(nn.Module):
         # 3. Initialize the TimestepEmbedder and class label
         self.timestep_embed = TimestepEmbedder(hidden_size)
         # 4. Create a sequential list of DiTBlocks
-        self.blocks = nn.ModuleList([DiTBlock(hidden_size, num_heads, num_classes) for _ in range(depth)])
+        self.blocks = nn.ModuleList([DiTBlock(hidden_size, num_heads) for _ in range(depth)])
         # 5. Un-patchify (Linear layer to map back to patch_size*patch_size*in_channels)
         self.final_layer = nn.Linear(hidden_size, patch_size * patch_size * in_channels)
 
@@ -152,14 +146,17 @@ class DiT(nn.Module):
         # (N, T=num_patches=H/P*W/P, hidden_size)
         x = x.flatten(2).transpose(1, 2)
         x = x + self.pos_embedding
-        t_embed = self.timestep_embed(t)
-        if class_label is not None:
+        conditioning = self.timestep_embed(t)
+        if self.num_classes > 0 and class_label is not None:
             if class_label.device != x.device:
                 class_label = class_label.to(x.device)
+            if class_label.ndim == 2 and class_label.shape[1] == 1:
+                class_label = class_label.squeeze(1)
             if class_label.dtype != torch.long:
                 class_label = class_label.long()
+            conditioning = conditioning + self.class_embedding(class_label)
         for block in self.blocks:
-            x = block(x, t_embed, class_label)
+            x = block(x, conditioning)
         # (N, T, p * p * in_channels)
         x = self.final_layer(x)
         # use einops instead of manual change.
