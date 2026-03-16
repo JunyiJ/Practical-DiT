@@ -29,8 +29,8 @@ def sample_images(
 ) -> torch.Tensor:
     # Reverse diffusion sampling with DDPM posterior mean/variance.
     # By default we use the standard epsilon-parameterized mean update.
-    # Optional x0 clipping is kept for experimentation because aggressive
-    # clipping during all reverse steps can bias uncertain samples dark.
+    # Optional x0 clipping is kept for experimentation. The reverse process
+    # stays in the training range [-1, 1]; visualization happens later.
     # Return shape: (N, C, H, W)
     if class_label is not None:
         labels = torch.full((num_samples,), class_label, device=device, dtype=torch.long)
@@ -64,7 +64,7 @@ def sample_images(
 
             if clip_x0:
                 x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t) * eps) / torch.sqrt(alpha_bar_t)
-                x0_pred = x0_pred.clamp(0.0, 1.0)
+                x0_pred = x0_pred.clamp(-1.0, 1.0)
                 coef_x0 = (torch.sqrt(alpha_bar_prev) * beta_t) / (1 - alpha_bar_t)
                 coef_xt = (torch.sqrt(alpha_t) * (1 - alpha_bar_prev)) / (1 - alpha_bar_t)
                 mean = coef_x0 * x0_pred + coef_xt * x_t
@@ -82,11 +82,15 @@ def sample_images(
                     f"t={i:04d} | min={x_t.min().item():.3f} "
                     f"max={x_t.max().item():.3f} mean={x_t.mean().item():.3f}"
                 )
-    return x_t.clamp(0.0, 1.0)
+    return x_t.clamp(-1.0, 1.0)
 
 
 def save_or_print(samples: torch.Tensor, output_path: Optional[str]) -> None:
-    print(f"Samples: shape={tuple(samples.shape)}, min={samples.min().item():.3f}, max={samples.max().item():.3f}, mean={samples.mean().item():.3f}")
+    print(
+        f"Samples (model space): shape={tuple(samples.shape)}, "
+        f"min={samples.min().item():.3f}, max={samples.max().item():.3f}, "
+        f"mean={samples.mean().item():.3f}"
+    )
     if output_path:
         try:
             from torchvision.utils import save_image
@@ -95,8 +99,13 @@ def save_or_print(samples: torch.Tensor, output_path: Optional[str]) -> None:
 
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Training uses ToTensor() without normalization, so clamp to [0, 1] for visualization.
-        save_image(samples.clamp(0.0, 1.0), path, nrow=min(8, samples.shape[0]), normalize=False)
+        # Convert model-space samples from [-1, 1] back to image-space [0, 1].
+        samples_to_save = ((samples + 1.0) / 2.0).clamp(0.0, 1.0)
+        print(
+            f"Samples (image space): min={samples_to_save.min().item():.3f}, "
+            f"max={samples_to_save.max().item():.3f}, mean={samples_to_save.mean().item():.3f}"
+        )
+        save_image(samples_to_save, path, nrow=min(8, samples.shape[0]), normalize=False)
         print(f"Saved image grid to: {path}")
 
 
@@ -115,7 +124,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--clip-x0",
         action="store_true",
-        help="Clip reconstructed x0 to [0, 1] at every reverse step for comparison/debugging",
+        help="Clip reconstructed x0 to [-1, 1] at every reverse step for comparison/debugging",
     )
     parser.add_argument(
         "--trace-every",
