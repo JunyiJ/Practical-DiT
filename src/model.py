@@ -133,7 +133,16 @@ class DiT(nn.Module):
         # 4. Create a sequential list of DiTBlocks
         self.blocks = nn.ModuleList([DiTBlock(hidden_size, num_heads) for _ in range(depth)])
         # 5. Un-patchify (Linear layer to map back to patch_size*patch_size*in_channels)
+        self.final_ln = nn.LayerNorm(hidden_size, elementwise_affine=False)
+        self.final_adaLN = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(hidden_size, 2 * hidden_size)
+        )
+        nn.init.zeros_(self.final_adaLN[-1].weight)
+        nn.init.zeros_(self.final_adaLN[-1].bias)
         self.final_layer = nn.Linear(hidden_size, patch_size * patch_size * in_channels)
+        nn.init.zeros_(self.final_layer.weight)
+        nn.init.zeros_(self.final_layer.bias)
 
     def forward(self, x, t, class_label=None):
         # x: (N, C, H, W) noisy images
@@ -158,7 +167,9 @@ class DiT(nn.Module):
         for block in self.blocks:
             x = block(x, conditioning)
         # (N, T, p * p * in_channels)
-        x = self.final_layer(x)
+        final_adaLN = self.final_adaLN(conditioning).unsqueeze(1)
+        gamma, beta = final_adaLN.chunk(2, dim=-1)
+        x = self.final_layer(self.final_ln(x) * (1 + gamma) + beta)
         # use einops instead of manual change.
         p = self.patch_size
         h = self.image_size // p
