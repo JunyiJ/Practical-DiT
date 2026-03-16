@@ -24,8 +24,13 @@ def sample_images(
     num_samples: int,
     device: torch.device,
     class_label: Optional[int] = None,
+    clip_x0: bool = False,
+    trace_every: int = 0,
 ) -> torch.Tensor:
     # Reverse diffusion sampling with DDPM posterior mean/variance.
+    # By default we use the standard epsilon-parameterized mean update.
+    # Optional x0 clipping is kept for experimentation because aggressive
+    # clipping during all reverse steps can bias uncertain samples dark.
     # Return shape: (N, C, H, W)
     if class_label is not None:
         labels = torch.full((num_samples,), class_label, device=device, dtype=torch.long)
@@ -52,24 +57,31 @@ def sample_images(
             alpha_bar_t = alpha_bars[i]
             beta_t = betas[i]
 
-            # Predict x0 from epsilon model and keep it in the training image range.
-            x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t) * eps) / torch.sqrt(alpha_bar_t)
-            x0_pred = x0_pred.clamp(0.0, 1.0)
-
             if i > 0:
                 alpha_bar_prev = alpha_bars[i - 1]
             else:
                 alpha_bar_prev = torch.tensor(1.0, device=device, dtype=x_t.dtype)
 
-            coef_x0 = (torch.sqrt(alpha_bar_prev) * beta_t) / (1 - alpha_bar_t)
-            coef_xt = (torch.sqrt(alpha_t) * (1 - alpha_bar_prev)) / (1 - alpha_bar_t)
-            mean = coef_x0 * x0_pred + coef_xt * x_t
+            if clip_x0:
+                x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t) * eps) / torch.sqrt(alpha_bar_t)
+                x0_pred = x0_pred.clamp(0.0, 1.0)
+                coef_x0 = (torch.sqrt(alpha_bar_prev) * beta_t) / (1 - alpha_bar_t)
+                coef_xt = (torch.sqrt(alpha_t) * (1 - alpha_bar_prev)) / (1 - alpha_bar_t)
+                mean = coef_x0 * x0_pred + coef_xt * x_t
+            else:
+                # Equivalent posterior mean without early x0 clipping.
+                mean = (x_t - (beta_t / torch.sqrt(1 - alpha_bar_t)) * eps) / torch.sqrt(alpha_t)
 
             if i > 0:
                 posterior_var = beta_t * (1 - alpha_bar_prev) / (1 - alpha_bar_t)
                 x_t = mean + torch.sqrt(posterior_var) * torch.randn_like(x_t)
             else:
                 x_t = mean
+            if trace_every > 0 and (i % trace_every == 0 or i == diffusion.num_timesteps - 1 or i == 0):
+                print(
+                    f"t={i:04d} | min={x_t.min().item():.3f} "
+                    f"max={x_t.max().item():.3f} mean={x_t.mean().item():.3f}"
+                )
     return x_t.clamp(0.0, 1.0)
 
 
@@ -100,6 +112,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--class-label", type=int, default=None)
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
     parser.add_argument("--output", default=None, help="Optional output image path")
+    parser.add_argument(
+        "--clip-x0",
+        action="store_true",
+        help="Clip reconstructed x0 to [0, 1] at every reverse step for comparison/debugging",
+    )
+    parser.add_argument(
+        "--trace-every",
+        type=int,
+        default=0,
+        help="Print sample min/max/mean every N reverse steps",
+    )
     parser.add_argument(
         "--training-config",
         default="../conf/training/cifar10_default.yaml",
@@ -153,16 +176,32 @@ def main() -> None:
     )
     print(
         f"Sampling with num_timesteps={num_timesteps}, "
-        f"beta_start={beta_start}, beta_end={beta_end}"
+        f"beta_start={beta_start}, beta_end={beta_end}, "
+        f"clip_x0={args.clip_x0}, trace_every={args.trace_every}"
     )
 
     print("Sampling unconditional...")
-    samples = sample_images(model, diffusion, args.num_samples, device)
+    samples = sample_images(
+        model,
+        diffusion,
+        args.num_samples,
+        device,
+        clip_x0=args.clip_x0,
+        trace_every=args.trace_every,
+    )
     save_or_print(samples, args.output)
 
     if args.class_label is not None:
         print(f"Sampling conditional label={args.class_label}...")
-        cond_samples = sample_images(model, diffusion, args.num_samples, device, args.class_label)
+        cond_samples = sample_images(
+            model,
+            diffusion,
+            args.num_samples,
+            device,
+            args.class_label,
+            clip_x0=args.clip_x0,
+            trace_every=args.trace_every,
+        )
         if args.output:
             output_path = Path(args.output)
             output_path = output_path.with_name(

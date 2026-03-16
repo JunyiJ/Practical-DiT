@@ -46,3 +46,12 @@ $$L_{simple} = \mathbb{E}_{t, x_0, \epsilon} \left[ ||\epsilon - \epsilon_\theta
 ```python sample.py --checkpoint ../checkpoints/model_checkpoint_20260310_144946_20260310_144946.pt \
   --class-label 3 --num-samples 8 --output ../outputs/cond_samples.png
 ```
+
+## Debug Notes For Dark Samples
+
+If samples look almost black with only a few colored pixels, check these points first:
+
+* `src/sample.py` used to reconstruct `x0` and clamp it to `[0, 1]` at every reverse step. At late timesteps, `sqrt(alpha_bar_t)` is tiny, so small noise-prediction errors explode in the `x0` estimate. Hard clipping then destroys information and often biases uncertain regions toward black.
+* The training pipeline keeps CIFAR-10 images in `[0, 1]` (`transforms.ToTensor()` only). That can work, but it is less symmetric than the more common `[-1, 1]` setup for diffusion models. If you retrain later, it is worth comparing both ranges.
+* The sampler now defaults to the standard epsilon-mean update without per-step `x0` clipping. To compare behaviors, run once normally and once with `--clip-x0`.
+* To inspect whether the reverse process is collapsing numerically, use `--trace-every 100` and watch the reported min/max/mean over timesteps.
