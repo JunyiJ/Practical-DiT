@@ -118,7 +118,7 @@ class DiT(nn.Module):
         self.num_patches = (image_size // patch_size) ** 2
         self.num_classes = num_classes
         if num_classes > 0:
-            self.class_embedding = nn.Embedding(num_classes, hidden_size)
+            self.class_embedding = nn.Embedding(num_classes + 1, hidden_size)
         # 1. Patchify the image (Conv2d is a standard shortcut here)
         self.x_embedder = nn.Conv2d(
             in_channels=in_channels,
@@ -144,7 +144,7 @@ class DiT(nn.Module):
         nn.init.zeros_(self.final_layer.weight)
         nn.init.zeros_(self.final_layer.bias)
 
-    def forward(self, x, t, class_label=None):
+    def forward(self, x, t, class_label=None, class_dropout_prob=0.0):
         # x: (N, C, H, W) noisy images
         # t: (N,) timesteps
         # Combine all components to output the predicted noise.
@@ -156,13 +156,24 @@ class DiT(nn.Module):
         x = x.flatten(2).transpose(1, 2)
         x = x + self.pos_embedding
         conditioning = self.timestep_embed(t)
-        if self.num_classes > 0 and class_label is not None:
+        if self.num_classes > 0:
+            if class_label is None:
+                class_label = torch.full(
+                    (x.shape[0],),
+                    self.num_classes,
+                    device=x.device,
+                    dtype=torch.long,
+                )
             if class_label.device != x.device:
                 class_label = class_label.to(x.device)
             if class_label.ndim == 2 and class_label.shape[1] == 1:
                 class_label = class_label.squeeze(1)
             if class_label.dtype != torch.long:
                 class_label = class_label.long()
+            if self.training and class_dropout_prob > 0.0:
+                drop_mask = torch.rand(x.shape[0], device=x.device) < class_dropout_prob
+                null_labels = torch.full_like(class_label, self.num_classes)
+                class_label = torch.where(drop_mask, null_labels, class_label)
             conditioning = conditioning + self.class_embedding(class_label)
         for block in self.blocks:
             x = block(x, conditioning)

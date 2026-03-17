@@ -23,7 +23,9 @@ def sample_images(
     diffusion: DDPM,
     num_samples: int,
     device: torch.device,
+    num_classes: int,
     class_label: Optional[int] = None,
+    guidance_scale: float = 1.0,
     clip_x0: bool = False,
     trace_every: int = 0,
 ) -> torch.Tensor:
@@ -32,10 +34,10 @@ def sample_images(
     # Optional x0 clipping is kept for experimentation. The reverse process
     # stays in the training range [-1, 1]; visualization happens later.
     # Return shape: (N, C, H, W)
+    null_labels = torch.full((num_samples,), num_classes, device=device, dtype=torch.long)
+    labels = None
     if class_label is not None:
         labels = torch.full((num_samples,), class_label, device=device, dtype=torch.long)
-    else:
-        labels = None
 
     x_t = torch.randn(
         num_samples,
@@ -52,7 +54,16 @@ def sample_images(
     with torch.no_grad():
         for i in range(diffusion.num_timesteps - 1, -1, -1):
             t = torch.full((num_samples,), i, device=device, dtype=torch.long)
-            eps = model(x_t, t, labels)
+            if class_label is None:
+                eps = model(x_t, t, null_labels)
+            else:
+                if guidance_scale == 1.0:
+                    eps = model(x_t, t, labels)
+                else:
+                    eps_uncondition = model(x_t, t, null_labels)
+                    eps_condition = model(x_t, t, labels)
+                    eps = eps_uncondition + guidance_scale * (eps_condition - eps_uncondition)
+
             alpha_t = alphas[i]
             alpha_bar_t = alpha_bars[i]
             beta_t = betas[i]
@@ -119,6 +130,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-samples", type=int, default=8)
     parser.add_argument("--class-label", type=int, default=None)
+    parser.add_argument("--guidance-scale", type=float, default=1.0)
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
     parser.add_argument("--output", default=None, help="Optional output image path")
     parser.add_argument(
@@ -165,6 +177,8 @@ def main() -> None:
 
     model = load_model(args.model_config, args.checkpoint, device)
     training_cfg = OmegaConf.load(args.training_config)
+    model_cfg = OmegaConf.load(args.model_config)
+    num_classes = int(model_cfg.num_classes)
     if args.num_timesteps is not None:
         num_timesteps = args.num_timesteps
     else:
@@ -186,6 +200,7 @@ def main() -> None:
     print(
         f"Sampling with num_timesteps={num_timesteps}, "
         f"beta_start={beta_start}, beta_end={beta_end}, "
+        f"guidance_scale={args.guidance_scale}, "
         f"clip_x0={args.clip_x0}, trace_every={args.trace_every}"
     )
 
@@ -195,6 +210,9 @@ def main() -> None:
         diffusion,
         args.num_samples,
         device,
+        num_classes,
+        None,
+        1.0,
         clip_x0=args.clip_x0,
         trace_every=args.trace_every,
     )
@@ -207,7 +225,9 @@ def main() -> None:
             diffusion,
             args.num_samples,
             device,
+            num_classes,
             args.class_label,
+            args.guidance_scale,
             clip_x0=args.clip_x0,
             trace_every=args.trace_every,
         )

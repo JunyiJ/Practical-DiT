@@ -41,6 +41,7 @@ def main(cfg: DictConfig):
 
     # 3. Optimizer
     optimizer = optim.AdamW(model.parameters(), lr=cfg.training.lr)
+    class_dropout_prob = cfg.training.get("class_dropout_prob", 0.0)
 
     # 4. Training Loop
     model.train()
@@ -52,7 +53,12 @@ def main(cfg: DictConfig):
             images = images.to(device)
             labels = labels.to(device)
             optimizer.zero_grad()
-            loss = diffusion.compute_loss(model, images, labels)
+            loss = diffusion.compute_loss(
+                model,
+                images,
+                labels,
+                class_dropout_prob=class_dropout_prob,
+            )
 
             loss.backward()
             optimizer.step()

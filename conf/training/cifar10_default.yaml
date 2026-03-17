@@ -6,3 +6,4 @@ beta_end: 2.0e-2
 lr: 2.0e-4
 epochs: 150
 checkpoint_every: 50
+class_dropout_prob: 0.2

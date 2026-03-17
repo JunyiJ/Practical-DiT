@@ -47,6 +47,15 @@ $$L_{simple} = \mathbb{E}_{t, x_0, \epsilon} \left[ ||\epsilon - \epsilon_\theta
   --class-label 3 --num-samples 8 --output ../outputs/cond_samples.png
 ```
 
+* Run fixed evaluation grids for a checkpoint:
+```python src/eval_samples.py --checkpoint checkpoints/model_checkpoint_epoch50_xxx.pt \
+  --output-dir outputs/eval
+```
+
+* Evaluate all checkpoints and build comparison sheets:
+```python src/eval_checkpoints.py --checkpoint-dir checkpoints --output-dir outputs/eval
+```
+
 ## Debug Notes For Dark Samples
 
 If samples look almost black with only a few colored pixels, check these points first:
