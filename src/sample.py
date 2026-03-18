@@ -9,11 +9,24 @@ from diffusion import DDPM
 from model import DiT
 
 
-def load_model(model_config_path: str, checkpoint_path: str, device: torch.device) -> DiT:
+def load_model(
+    model_config_path: str,
+    checkpoint_path: str,
+    device: torch.device,
+    use_raw_weights: bool = False,
+) -> DiT:
     cfg = OmegaConf.load(model_config_path)
     model = DiT(**cfg).to(device)
     state = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(state)
+    if isinstance(state, dict):
+        if not use_raw_weights and "ema_model" in state:
+            model.load_state_dict(state["ema_model"])
+        elif "model" in state:
+            model.load_state_dict(state["model"])
+        else:
+            model.load_state_dict(state)
+    else:
+        model.load_state_dict(state)
     model.eval()
     return model
 
@@ -132,6 +145,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--class-label", type=int, default=None)
     parser.add_argument("--guidance-scale", type=float, default=1.0)
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
+    parser.add_argument("--use-raw-weights", action="store_true")
     parser.add_argument("--output", default=None, help="Optional output image path")
     parser.add_argument(
         "--clip-x0",
@@ -175,7 +189,7 @@ def main() -> None:
     device = resolve_device(args.device)
     print(f"Using device: {device}")
 
-    model = load_model(args.model_config, args.checkpoint, device)
+    model = load_model(args.model_config, args.checkpoint, device, use_raw_weights=args.use_raw_weights)
     training_cfg = OmegaConf.load(args.training_config)
     model_cfg = OmegaConf.load(args.model_config)
     num_classes = int(model_cfg.num_classes)
@@ -201,6 +215,7 @@ def main() -> None:
         f"Sampling with num_timesteps={num_timesteps}, "
         f"beta_start={beta_start}, beta_end={beta_end}, "
         f"guidance_scale={args.guidance_scale}, "
+        f"use_raw_weights={args.use_raw_weights}, "
         f"clip_x0={args.clip_x0}, trace_every={args.trace_every}"
     )
 

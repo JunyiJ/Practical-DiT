@@ -7,7 +7,9 @@ from torch.utils.data import DataLoader
 from model import DiT
 from diffusion import DDPM
 from data import get_cifar10_dataloader # You'll define this in data.py
-from utility import save_model_checkpoint
+from utility import save_model_checkpoint, update_ema
+
+import copy
 
 def get_device(device_cfg):
     if device_cfg == "auto":
@@ -42,9 +44,14 @@ def main(cfg: DictConfig):
     # 3. Optimizer
     optimizer = optim.AdamW(model.parameters(), lr=cfg.training.lr)
     class_dropout_prob = cfg.training.get("class_dropout_prob", 0.0)
+    ema_decay = cfg.training.get("ema_decay", 0.999)
 
     # 4. Training Loop
     model.train()
+    ema_model = copy.deepcopy(model)
+    ema_model.eval()
+    for p in ema_model.parameters():
+        p.requires_grad_(False)
     checkpoint_every = cfg.training.get("checkpoint_every", 0)
     last_checkpoint_epoch = None
     for epoch in range(cfg.training.epochs):
@@ -62,22 +69,29 @@ def main(cfg: DictConfig):
 
             loss.backward()
             optimizer.step()
+            update_ema(ema_model, model, decay=ema_decay)
 
             epoch_loss += loss.item()
         print(f"Epoch {epoch+1}/{cfg.training.epochs} | Loss: {epoch_loss/len(dataloader):.4f}")
         if checkpoint_every and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = save_model_checkpoint(
                 model,
-                cfg.training.get("checkpoint_path"),
+                checkpoint_path=cfg.training.get("checkpoint_path"),
                 epoch=epoch + 1,
+                ema_model=ema_model,
+                optimizer=optimizer,
+                config=OmegaConf.to_container(cfg, resolve=True),
             )
             print(f"Checkpoint saved to: {checkpoint_path}")
             last_checkpoint_epoch = epoch + 1
     if last_checkpoint_epoch != cfg.training.epochs:
         checkpoint_path = save_model_checkpoint(
             model,
-            cfg.training.get("checkpoint_path"),
+            checkpoint_path=cfg.training.get("checkpoint_path"),
             epoch=cfg.training.epochs,
+            ema_model=ema_model,
+            optimizer=optimizer,
+            config=OmegaConf.to_container(cfg, resolve=True),
         )
         print(f"Checkpoint saved to: {checkpoint_path}")
 
