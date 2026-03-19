@@ -28,7 +28,7 @@ So, $$x_0 = \frac{1}{\sqrt{\bar{\alpha}_t}} (x_t - \sqrt{1 - \bar{\alpha}_t} \ep
 Then it's clear to subsitute x_0 with the equation above and after simplification:
 $$\tilde{\mu}_t = \frac{1}{\sqrt{\alpha_t}} \left( x_t - \frac{\beta_t}{\sqrt{1 - \bar{\alpha}_t}} \epsilon \right)$$
 
-which only depends on x_t (known) and noise ($epsilon$, model prediction). As as result, we turn the model from predicting the distribution mean to predicting the noise.
+which only depends on x_t (known) and noise ($epsilon$, model prediction). As result, we turn the model from predicting the distribution mean to predicting the noise.
 
 4. The simplified loss function
 $$L_{simple} = \mathbb{E}_{t, x_0, \epsilon} \left[ ||\epsilon - \epsilon_\theta(x_t, t)||^2 \right]$$
@@ -36,6 +36,12 @@ $$L_{simple} = \mathbb{E}_{t, x_0, \epsilon} \left[ ||\epsilon - \epsilon_\theta
 * Basically you pass the image and generate a timestamp $t$ to get the noisy image $x_t$
 * The DiT model takes $x_t$ and $t$ as input to predict the noise.
 * We calculate the mean squared error (MSE) between true noise and predicted noise.
+
+5. Generating/Sampling image
+To get from x_t to x_{t-1}, we use the model's predicted noise and also inject a tiny bit of fresh noise (z) back.
+$$x_{t-1} = \frac{1}{\sqrt{\alpha_t}} \left( x_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar{\alpha}_t}} \epsilon_\theta(x_t, t) \right) + \sigma_t z$$
+
+We used the posterior variance: `posterior_var = beta_t * (1 - alpha_bar_prev) / (1 - alpha_bar_t` 
 
 
 # Cmd cheatsheet
@@ -64,3 +70,5 @@ If samples look almost black with only a few colored pixels, check these points 
 * The training pipeline keeps CIFAR-10 images in `[0, 1]` (`transforms.ToTensor()` only). That can work, but it is less symmetric than the more common `[-1, 1]` setup for diffusion models. If you retrain later, it is worth comparing both ranges.
 * The sampler now defaults to the standard epsilon-mean update without per-step `x0` clipping. To compare behaviors, run once normally and once with `--clip-x0`.
 * To inspect whether the reverse process is collapsing numerically, use `--trace-every 100` and watch the reported min/max/mean over timesteps.
+* The condition embedding is better to be shared among all DiT blocks.
+* Make sure to have the condition embedding and AdaLN for the final layer instead of just a simple linear layer
